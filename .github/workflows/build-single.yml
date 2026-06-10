@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - warp
+          - openconnect
       tag:
         description: 'Image tag'
         required: true
