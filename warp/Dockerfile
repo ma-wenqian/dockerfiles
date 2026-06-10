@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=gogost/gost:latest /bin/gost /usr/local/bin/gost
 
+ENV TZ=Asia/Hong_Kong
+
 # Allow customizing the proxy port, defaults to 1081
 ENV PROXY_PORT=1081
 
@@ -34,8 +36,7 @@ done\n\
 \n\
 # 3. Set mode and connect\n\
 # If already registered (e.g. from an imported image), registration is skipped\n\
-#yes y | warp-cli registration new || true\n\
-warp-cli mode tun\n\
+echo y | warp-cli registration new || true\n\
 warp-cli connect\n\
 \n\
 # 4. Start GOST proxy in the foreground on the configured port\n\

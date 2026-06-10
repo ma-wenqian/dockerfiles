@@ -29,6 +29,8 @@ COPY --from=gogost/gost:latest /bin/gost /usr/local/bin/gost
 
 RUN ldconfig
 
+ENV TZ=Asia/Hong_Kong
+
 # Required VPN credentials
 ENV OPENCONNECT_HOST=vpn2fa.hku.hk
 ENV OPENCONNECT_USER=

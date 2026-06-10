@@ -15,11 +15,10 @@ The image is published to both DockerHub and GitHub Container Registry (GHCR). U
 
 ---
 
-## First-Time Setup
+## Start the container
 
-WARP requires a one-time registration before it can connect. On the very first run you must enter the container and register manually.
+This container automatically handles WARP registration on its first run, making it ready to use immediately.
 
-**Step 1 — Start the container**
 
 ```bash
 # from DockerHub
@@ -39,21 +38,7 @@ docker run -d \
   ghcr.io/ma-wenqian/warp
 ```
 
-**Step 2 — Enter the container and register**
-
-```bash
-docker exec -it warp bash
-warp-cli registration new
-exit
-```
-
-**Step 3 — Restart to apply**
-
-```bash
-docker restart warp
-```
-
-After this, the container will connect to WARP automatically on every future start. No need to register again.
+Once started, the container will automatically register and connect to the Cloudflare WARP network. No manual intervention, terminal commands, or restarts are required!
 
 ---
 
