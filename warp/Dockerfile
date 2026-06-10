@@ -13,16 +13,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && . /etc/os-release \
     && echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ ${VERSION_CODENAME} main" > /etc/apt/sources.list.d/cloudflare-client.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends cloudflare-warp \
+    && apt-get install -y --no-install-recommends cloudflare-warp tinyproxy\
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=gogost/gost:latest /bin/gost /usr/local/bin/gost
 
 ENV TZ=Asia/Hong_Kong
 
 # Allow customizing the proxy port, defaults to 1081
 ENV PROXY_PORT=1081
+
+COPY tinyproxy.conf /etc/tinyproxy.conf
 
 # Write the entrypoint script inline
 RUN echo '#!/bin/bash\n\
@@ -39,9 +40,9 @@ done\n\
 echo y | warp-cli registration new || true\n\
 warp-cli connect\n\
 \n\
-# 4. Start GOST proxy in the foreground on the configured port\n\
-# Change http:// to socks5:// if you prefer a SOCKS5 proxy\n\
-exec gost -L http://:${PROXY_PORT}' > /entrypoint.sh && chmod +x /entrypoint.sh
+# 4. Patch tinyproxy port and start in foreground\n\
+sed -i "s/^Port .*/Port ${PROXY_PORT}/" /etc/tinyproxy.conf\n\
+exec tinyproxy -c /etc/tinyproxy.conf -d' > /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE ${PROXY_PORT}
 

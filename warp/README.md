@@ -26,7 +26,7 @@ docker run -d \
   --name warp \
   --cap-add NET_ADMIN \
   --device /dev/net/tun \
-  -p 1081:1081 \
+  -p 1081:1081 --restart unless-stopped \
   mawenqiandev/warp
 
 # from GHCR
@@ -34,7 +34,7 @@ docker run -d \
   --name warp \
   --cap-add NET_ADMIN \
   --device /dev/net/tun \
-  -p 1081:1081 \
+  -p 1081:1081 --restart unless-stopped \
   ghcr.io/ma-wenqian/warp
 ```
 
@@ -72,7 +72,7 @@ docker run -d \
   --cap-add NET_ADMIN \
   --device /dev/net/tun \
   -e PROXY_PORT=8080 \
-  -p 8080:8080 \
+  -p 8080:8080 --restart unless-stopped \
   mawenqiandev/warp   # or ghcr.io/ma-wenqian/warp
 ```
 
