@@ -1,4 +1,4 @@
-name: Build Selected Images
+name: Build Images
 
 on:
   workflow_dispatch:

@@ -54,9 +54,11 @@ services:
     container_name: gost
     restart: unless-stopped
     network_mode: "service:warp" # Share warp's network namespace so 127.0.0.1 is reachable
+    environment:
+      GOST_LOGGER_LEVEL: warn
     depends_on:
       - warp
-    command: "-L=socks5://:1081 -F=socks5://127.0.0.1:1085" # Listen on 1081, expose as SOCKS5, Forward to warp's local proxy port
+    command: "-L=:1081/127.0.0.1:1085" # Listen on 1081, expose as SOCKS5, Forward to warp's local proxy port
 ```
 
 ### Usage
@@ -103,12 +105,14 @@ services:
     container_name: gost
     restart: unless-stopped
     network_mode: "service:warp" # All gost traffic routes through warp's TUN interface
+    environment:
+      GOST_LOGGER_LEVEL: warn
     depends_on:
       - warp
     ports:
       - "1081:1081"
     command:
-      - "-L=socks5://:1081" # Listen and expose as SOCKS5, no -F needed — TUN handles routing
+      - "-L=:1081" # Listen and expose as SOCKS5, no -F needed — TUN handles routing
 ```
 
 ### Usage
