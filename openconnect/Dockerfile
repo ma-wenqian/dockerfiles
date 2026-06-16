@@ -25,24 +25,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local /usr/local
-COPY --from=gogost/gost:latest /bin/gost /usr/local/bin/gost
+COPY --from=gogost/gost:latest /bin/gost  /usr/local/bin/gost
 
 RUN ldconfig
 
 ENV TZ=Asia/Hong_Kong
-
-# Required VPN credentials
-ENV OPENCONNECT_HOST=vpn2fa.hku.hk
-ENV OPENCONNECT_USER=
-ENV OPENCONNECT_PASSWORD=
-ENV OPENCONNECT_TOTP=
-
-# Allow customizing the proxy port, defaults to 1080
-ENV PROXY_PORT=1080
-
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-EXPOSE ${PROXY_PORT}
-
-ENTRYPOINT ["/entrypoint.sh"]

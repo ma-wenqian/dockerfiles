@@ -17,8 +17,71 @@ The image is published to both DockerHub and GitHub Container Registry (GHCR). U
 
 ## Start the container
 
-This container automatically handles WARP registration on its first run, making it ready to use immediately.
+### 1. TUN Mode
 
+If you want to route traffic through the virtual `tun` interface, the container requires advanced network privileges. You can run **Gost** (or similar tools) alongside WARP inside the container to expose a proxy port.
+
+**From Docker Hub:**
+
+```bash
+docker run -d \
+  --name warp \
+  --cap-add NET_ADMIN \
+  --device /dev/net/tun \
+  -p 1081:1081 \
+  --restart unless-stopped \
+  mawenqiandev/warp
+
+```
+
+**From GitHub Container Registry (GHCR):**
+
+```bash
+docker run -d \
+  --name warp \
+  --cap-add NET_ADMIN \
+  --device /dev/net/tun \
+  -p 1081:1081 \
+  --restart unless-stopped \
+  ghcr.io/ma-wenqian/warp
+
+```
+
+---
+
+### 2. Proxy Mode (No TUN Required)
+
+If you do not need the `tun` device, you can run WARP in its built-in proxy mode (typically SOCKS5). This does not require `--cap-add NET_ADMIN`.
+
+```bash
+docker run -d \
+  --name warp \
+  -p 1081:1081 \
+  --restart unless-stopped \
+  mawenqiandev/warp
+
+```
+
+**💡 Advanced Usage: Forwarding with Gost**
+By default, WARP's proxy mode runs on a specific internal port (e.g., `40000`). While you can map this directly using Docker's `-p` flag, you can also use **Gost** to forward the traffic. This is highly recommended if you need to:
+
+* Convert protocols (e.g., from SOCKS5 to HTTP proxy).
+* Add username/password authentication.
+* Specify a custom external port.
+
+*Example Gost command routing traffic to WARP's local SOCKS5 proxy:*
+
+```bash
+gost -L=http://:1081 -F=socks5://127.0.0.1:40000
+
+```
+
+*(Note: Replace `40000` with the actual default port your WARP client is listening on).*
+
+---
+
+
+for tun use, you can add gost or other to start a proxy prot.
 
 ```bash
 # from DockerHub
@@ -37,8 +100,6 @@ docker run -d \
   -p 1081:1081 --restart unless-stopped \
   ghcr.io/ma-wenqian/warp
 ```
-
-Once started, the container will automatically register and connect to the Cloudflare WARP network. No manual intervention, terminal commands, or restarts are required!
 
 ---
 
@@ -60,41 +121,6 @@ curl -x http://localhost:1081 https://cloudflare.com/cdn-cgi/trace
 
 Look for `warp=on` in the output to confirm WARP is active.
 
----
-
-## Custom Port
-
-To use a different port, pass the `PROXY_PORT` environment variable:
-
-```bash
-docker run -d \
-  --name warp \
-  --cap-add NET_ADMIN \
-  --device /dev/net/tun \
-  -e PROXY_PORT=8080 \
-  -p 8080:8080 --restart unless-stopped \
-  mawenqiandev/warp   # or ghcr.io/ma-wenqian/warp
-```
-
----
-
-## Docker Compose
-
-```yaml
-services:
-  warp:
-    image: mawenqiandev/warp:latest
-    container_name: warp
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun
-    environment:
-      - PROXY_PORT=1081
-    ports:
-      - "1081:1081"
-    restart: unless-stopped
-```
 
 ---
 

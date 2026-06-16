@@ -1,0 +1,115 @@
+name: Build Selected Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_warp:
+        description: 'Build warp image'
+        type: boolean
+        required: true
+        default: false
+      build_openconnect:
+        description: 'Build openconnect image'
+        type: boolean
+        required: true
+        default: false
+      tag:
+        description: 'Image tag'
+        required: true
+        default: 'latest'
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+# Step 1: Read selected options and dynamically generate matrix JSON array
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      # Output the generated JSON array for use by the next job
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Generate matrix from inputs
+        id: set-matrix
+        run: |
+          # Use jq to safely generate a JSON array dynamically
+          # If an input is true, add the corresponding directory name to the array
+          IMAGES_JSON=$(jq -n -c \
+            --arg warp "${{ inputs.build_warp }}" \
+            --arg openconnect "${{ inputs.build_openconnect }}" \
+            '[
+              (if $warp == "true" then "warp" else empty end),
+              (if $openconnect == "true" then "openconnect" else empty end)
+            ]'
+          )
+          
+          echo "matrix=$IMAGES_JSON" >> $GITHUB_OUTPUT
+          echo "Generated matrix: $IMAGES_JSON"
+  build:
+    needs: prepare
+    # Only run when the matrix array is not empty (i.e. at least one option selected)
+    if: ${{ needs.prepare.outputs.matrix != '[]' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 解析上一个 job 传过来的 JSON 数组
+        image: ${{ fromJson(needs.prepare.outputs.matrix) }}
+      fail-fast: false
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load build.env
+        run: |
+          # Load the env file from the directory corresponding to the current matrix value (e.g. warp or openconnect)
+          source ${{ matrix.image }}/build.env
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+          echo "PLATFORMS=${PLATFORMS:-linux/amd64,linux/arm64}" >> $GITHUB_ENV
+          echo "DATE_TAG=$(date +'%Y.%m')" >> $GITHUB_ENV
+      - name: Generate Docker Tags
+        run: |
+          # 1. 默认始终包含 latest 标签
+          DOCKER_TAGS="${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+          DOCKER_TAGS="$DOCKER_TAGS,ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest"
+          
+          # 2. 判断：如果用户输入了 tag，且输入的不是 "latest"
+          if [[ "${{ inputs.tag }}" != "latest" && -n "${{ inputs.tag }}" ]]; then
+            # 追加自定义 Tag
+            DOCKER_TAGS="$DOCKER_TAGS,${{ vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ inputs.tag }}"
+            DOCKER_TAGS="$DOCKER_TAGS,ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ inputs.tag }}"
+          fi
+          
+          # 将最终的逗号分隔字符串写入环境变量
+          echo "FINAL_TAGS=$DOCKER_TAGS" >> $GITHUB_ENV
+          echo "Generated Tags: $DOCKER_TAGS"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}         
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: ./${{ matrix.image }}
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ env.FINAL_TAGS }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
