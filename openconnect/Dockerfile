@@ -25,7 +25,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local /usr/local
-COPY --from=gogost/gost:latest /bin/gost  /usr/local/bin/gost
 
 RUN ldconfig
 

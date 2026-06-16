@@ -3,16 +3,11 @@ name: Build Selected Images
 on:
   workflow_dispatch:
     inputs:
-      build_warp:
-        description: 'Build warp image'
-        type: boolean
+      images:
+        description: 'Images to build (comma-separated): warp, openconnect, myapp'
         required: true
-        default: false
-      build_openconnect:
-        description: 'Build openconnect image'
-        type: boolean
-        required: true
-        default: false
+        default: ''
+        type: string
       tag:
         description: 'Image tag'
         required: true
@@ -34,17 +29,12 @@ jobs:
       - name: Generate matrix from inputs
         id: set-matrix
         run: |
-          # Use jq to safely generate a JSON array dynamically
-          # If an input is true, add the corresponding directory name to the array
-          IMAGES_JSON=$(jq -n -c \
-            --arg warp "${{ inputs.build_warp }}" \
-            --arg openconnect "${{ inputs.build_openconnect }}" \
-            '[
-              (if $warp == "true" then "warp" else empty end),
-              (if $openconnect == "true" then "openconnect" else empty end)
-            ]'
-          )
-          
+          IMAGES_JSON=$(echo "${{ inputs.images }}" \
+          | tr ',' '\n' \
+          | tr -d ' ' \
+          | jq -Rc . \
+          | jq -sc '.')
+
           echo "matrix=$IMAGES_JSON" >> $GITHUB_OUTPUT
           echo "Generated matrix: $IMAGES_JSON"
   build:

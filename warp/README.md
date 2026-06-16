@@ -15,117 +15,120 @@ The image is published to both DockerHub and GitHub Container Registry (GHCR). U
 
 ---
 
-## Start the container
+## Start the container|warp-gost-proxy
 
-### 1. TUN Mode
+Route your traffic through [Cloudflare WARP](https://developers.cloudflare.com/cloudflare-one/connections/connect-devices/warp/) using Docker, and expose it as a local SOCKS5 proxy via [gost](https://github.com/go-gost/gost).
 
-If you want to route traffic through the virtual `tun` interface, the container requires advanced network privileges. You can run **Gost** (or similar tools) alongside WARP inside the container to expose a proxy port.
+Two setups are provided depending on how you run WARP:
 
-**From Docker Hub:**
-
-```bash
-docker run -d \
-  --name warp \
-  --cap-add NET_ADMIN \
-  --device /dev/net/tun \
-  -p 1081:1081 \
-  --restart unless-stopped \
-  mawenqiandev/warp
-
-```
-
-**From GitHub Container Registry (GHCR):**
-
-```bash
-docker run -d \
-  --name warp \
-  --cap-add NET_ADMIN \
-  --device /dev/net/tun \
-  -p 1081:1081 \
-  --restart unless-stopped \
-  ghcr.io/ma-wenqian/warp
-
-```
+|                              | Solution 1 — Proxy Mode                | Solution 2 — TUN Mode                          |
+| ---------------------------- | -------------------------------------- | ---------------------------------------------- |
+| WARP runs as                 | SOCKS5 proxy on `127.0.0.1:1085`       | Full TUN virtual network interface             |
+| gost role                    | Bridges `127.0.0.1:1085` → port `1081` | Listens on `1081`, traffic auto-routed via TUN |
+| `cap_add` / `devices` needed | No                                     | Yes (`NET_ADMIN`, `/dev/net/tun`)              |
+| Complexity                   | Lower                                  | Higher, but routes all traffic                 |
 
 ---
 
-### 2. Proxy Mode (No TUN Required)
+## Solution 1 — WARP Proxy Mode
 
-If you do not need the `tun` device, you can run WARP in its built-in proxy mode (typically SOCKS5). This does not require `--cap-add NET_ADMIN`.
-
-```bash
-docker run -d \
-  --name warp \
-  -p 1081:1081 \
-  --restart unless-stopped \
-  mawenqiandev/warp
+WARP runs as a SOCKS5 proxy on `127.0.0.1:1085` inside its container. Since it binds to loopback, gost must share the same network namespace via `network_mode: service:warp` to reach it.
 
 ```
-
-**💡 Advanced Usage: Forwarding with Gost**
-By default, WARP's proxy mode runs on a specific internal port (e.g., `40000`). While you can map this directly using Docker's `-p` flag, you can also use **Gost** to forward the traffic. This is highly recommended if you need to:
-
-* Convert protocols (e.g., from SOCKS5 to HTTP proxy).
-* Add username/password authentication.
-* Specify a custom external port.
-
-*Example Gost command routing traffic to WARP's local SOCKS5 proxy:*
-
-```bash
-gost -L=http://:1081 -F=socks5://127.0.0.1:40000
-
+Your machine :1081  →  gost  →  127.0.0.1:1085  →  WARP  →  Cloudflare
 ```
 
-*(Note: Replace `40000` with the actual default port your WARP client is listening on).*
+### `docker-compose.yml`
+
+```yaml
+services:
+  warp:
+    image: mawenqiandev/warp:latest
+    container_name: warp
+    restart: unless-stopped
+    ports:
+      - "1081:1081" # Owned by warp's network namespace, shared with gost
+
+  gost:
+    image: gogost/gost:latest
+    container_name: gost
+    restart: unless-stopped
+    network_mode: "service:warp" # Share warp's network namespace so 127.0.0.1 is reachable
+    depends_on:
+      - warp
+    command: "-L=socks5://:1081 -F=socks5://127.0.0.1:1085" # Listen on 1081, expose as SOCKS5, Forward to warp's local proxy port
+```
+
+### Usage
+
+```bash
+docker compose up -d
+```
+
+Then configure your application to use `socks5://127.0.0.1:1081` as the proxy, or test with curl:
+
+```bash
+curl --proxy socks5h://127.0.0.1:1081 https://cloudflare.com/cdn-cgi/trace
+```
+
+You should see `warp=on` in the output.
 
 ---
 
+## Solution 2 — WARP TUN Mode
 
-for tun use, you can add gost or other to start a proxy prot.
+WARP creates a virtual TUN network interface that captures all traffic at the OS level. gost shares this network namespace, so any traffic it sends is automatically routed through WARP — no explicit `-F` forward needed.
+
+```
+Your machine :1081  →  gost  →  [TUN interface]  →  WARP  →  Cloudflare
+```
+
+### `docker-compose.yml`
+
+```yaml
+services:
+  warp:
+    image: mawenqiandev/warp:latest
+    container_name: warp
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN  # Required for TUN device
+    devices:
+      - /dev/net/tun:/dev/net/tun  # TUN interface
+    sysctls:
+      - net.ipv4.ip_forward=1  # Allow traffic forwarding
+
+  gost:
+    image: gogost/gost:latest
+    container_name: gost
+    restart: unless-stopped
+    network_mode: "service:warp" # All gost traffic routes through warp's TUN interface
+    depends_on:
+      - warp
+    ports:
+      - "1081:1081"
+    command:
+      - "-L=socks5://:1081" # Listen and expose as SOCKS5, no -F needed — TUN handles routing
+```
+
+### Usage
 
 ```bash
-# from DockerHub
-docker run -d \
-  --name warp \
-  --cap-add NET_ADMIN \
-  --device /dev/net/tun \
-  -p 1081:1081 --restart unless-stopped \
-  mawenqiandev/warp
-
-# from GHCR
-docker run -d \
-  --name warp \
-  --cap-add NET_ADMIN \
-  --device /dev/net/tun \
-  -p 1081:1081 --restart unless-stopped \
-  ghcr.io/ma-wenqian/warp
+docker compose up -d
 ```
 
----
-
-## Usage
-
-Once running, the container exposes an HTTP proxy on port `1081` (default).
-
-Configure your client to use:
-
-```
-http://localhost:1081
-```
-
-**Test it**
+Same as Solution 1 — connect to `socks5://127.0.0.1:1081`:
 
 ```bash
-curl -x http://localhost:1081 https://cloudflare.com/cdn-cgi/trace
+curl --proxy socks5h://127.0.0.1:1081 https://cloudflare.com/cdn-cgi/trace
 ```
 
-Look for `warp=on` in the output to confirm WARP is active.
-
+> **Note:** TUN mode requires `/dev/net/tun` to be available on your host. This works on most Linux systems. It may require additional setup on Docker Desktop (macOS/Windows).
 
 ---
 
 ## Notes
 
-- `--cap-add NET_ADMIN` and `--device /dev/net/tun` are required for WARP to create a TUN interface
-- The proxy protocol is HTTP by default. To switch to SOCKS5, change `http://` to `socks5://` in the `Dockerfile` entrypoint and rebuild
-- Registration data is stored inside the container. To persist it across container recreations, mount `/var/lib/cloudflare-warp` as a volume
+- The `ports` declaration must always be on the `warp` service, not `gost`, because `network_mode: service:warp` means gost shares warp's network stack and has no independent port bindings.
+- Verify that the `mawenqiandev/warp` image exposes its proxy on port `1085` in proxy mode — check its documentation or set `WARP_PROXY_PORT=1085` via environment variables if needed.
+- Neither setup exposes WARP's internal port externally, keeping the attack surface minimal.
