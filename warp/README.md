@@ -48,14 +48,35 @@ services:
     restart: unless-stopped
     ports:
       - "1081:1081" # Owned by warp's network namespace, shared with gost
+    command: >
+      sh -c "
+        warp-svc >/dev/null &
 
+        sleep 3
+
+        warp-cli --accept-tos mode proxy &&
+        warp-cli --accept-tos proxy port 1085 &&
+        warp-cli --accept-tos registration delete || true &&
+        warp-cli --accept-tos registration new &&
+        warp-cli --accept-tos connect &&
+
+        sleep 30
+
+        echo 'WARP connected. Testing...' &&
+        curl -x 127.0.0.1:1085 -sL  https://cloudflare.com/cdn-cgi/trace | grep warp ||
+
+        echo 'WARP test failed'
+
+        tail -f /dev/null
+      "
+      
   gost:
     image: gogost/gost:latest
     container_name: gost
     restart: unless-stopped
     network_mode: "service:warp" # Share warp's network namespace so 127.0.0.1 is reachable
     environment:
-      GOST_LOGGER_LEVEL: warn
+      GOST_LOGGER_LEVEL: fatal
     depends_on:
       - warp
     command: "-L=:1081/127.0.0.1:1085" # Listen on 1081, expose as SOCKS5, Forward to warp's local proxy port
@@ -106,7 +127,7 @@ services:
     restart: unless-stopped
     network_mode: "service:warp" # All gost traffic routes through warp's TUN interface
     environment:
-      GOST_LOGGER_LEVEL: warn
+      GOST_LOGGER_LEVEL: fatal
     depends_on:
       - warp
     ports:
